@@ -69,5 +69,58 @@
       let path = '';
       pathLevels.forEach((lvl,i) => {
         const parent = i===0 ? 'root' : path;
-        path = i===0
+        path = i===0 ? lvl : `${path}|${lvl}`;
+        if (!nodeMap[path]) {
+          nodeMap[path] = {
+            id:     path,
+            parent,
+            name:   lvl,
+            value:  i === pathLevels.length-1 ? leafValue : undefined
+          };
+        } else if (i === pathLevels.length-1) {
+          nodeMap[path].value = (nodeMap[path].value||0) + leafValue;
+        }
+      });
+    });
 
+    // --- THE FIX: root has NO parent property ---
+    nodeMap.root = {
+      id:    'root',
+      name:  'All',
+      value: total
+    };
+
+    const data = Object.values(nodeMap);
+    console.log('🔢 Final data points:', data.length);
+
+    // Render Sunburst
+    Highcharts.chart('container', {
+      chart: { height: '100%' },
+      title: null,
+      series: [{
+        type:             'sunburst',
+        data,
+        allowDrillToNode: true,
+        cursor:           'pointer',
+        colorByPoint:     true,
+        dataLabels:       {
+          format: '{point.name}',
+          rotationMode: 'circular'
+        }
+      }],
+      tooltip: {
+        headerFormat: '',
+        pointFormat:  '<b>{point.name}</b>: {point.value}'
+      }
+    });
+
+    // DEBUG: count slice <path> elements
+    const slices = document.querySelectorAll(
+      '#container .highcharts-series-group path'
+    ).length;
+    console.log('🎯 Slices drawn:', slices);
+  })();
+  </script>
+
+</body>
+</html>
