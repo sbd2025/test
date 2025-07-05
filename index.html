@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Energy Consumption Breakdown</title>
+
+  <!-- Force no favicon 404s -->
+  <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+
+  <!-- Highcharts core + sunburst module -->
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <script src="https://code.highcharts.com/modules/sunburst.js"></script>
+
+  <style>
+    /* fixed size so DevTools doesn’t hide it */
+    body { margin:0; font-family:sans-serif; }
+    #container { width:100%; height:600px; }
+  </style>
+</head>
+<body>
+
+  <h2 style="text-align:center; margin:10px 0;">
+    Energy Consumption Breakdown
+  </h2>
+  <div id="container"></div>
+
+  <script>
+  (async function(){
+    console.log('🕐 Fetching sheet…');
+    const SHEET_ID = '15lSsbE9A3iU88hxLpXTjjgnYY_ZGHVGN-XokGQjNhYE';
+    const GID      = '817329596';
+    const url      = `https://docs.google.com/spreadsheets/d/${SHEET_ID}` +
+                     `/gviz/tq?gid=${GID}&headers=1&tqx=out:json`;
+
+    let text;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      text = await res.text();
+    } catch (err) {
+      console.error('❌ Fetch failed:', err);
+      return;
+    }
+
+    // strip GViz padding
+    const start = text.indexOf('(') + 1;
+    const end   = text.lastIndexOf(')');
+    const json  = JSON.parse(text.substring(start, end));
+    console.log('✅ Parsed rows:', json.table.rows.length);
+
+    // build unique nodes
+    const nodeMap = Object.create(null);
+    let total = 0;
+    json.table.rows.forEach(r => {
+      const vals = r.c.map(c => {
+        if (!c) return null;
+        if (typeof c.v === 'string' &&
+            /^\d{1,3}(,\d{3})*(\.\d+)?$/.test(c.v)
+        ) return Number(c.v.replace(/,/g,''));
+        return c.v;
+      });
+      const leaves = vals.slice(0,-1);
+      const value  = vals[vals.length-1] || 0;
+      total += value;
+
+      let path = '';
+      leaves.forEach((lvl,i) => {
+        const parent = i === 0 ? 'root' : path;
+        path = i === 0 ? lvl : `${path}|${lvl}`;
+        if (!nodeMap[path]) {
+          nodeMap[path] = {
+            id:     path,
+            parent,
+            name:   lvl,
+            value:  i === leaves.length-1 ? value : undefined
+          };
+        } else if (i === leaves.length-1) {
+          nodeMap[path].value = (nodeMap[path].value||0) + value;
+        }
+      });
+    });
+
+    // give the root a numeric value so the outer ring draws
+    nodeMap.root = { id:'root', parent:'', name:'All', value: total };
+
+    const data = Object.values(nodeMap);
+    console.log('🔢 Final data points:', data.length);
+
+    // render
+    Highcharts.chart('container', {
+      chart: { height: '100%' },
+      title: null,
+      series: [{
+        type:            'sunburst',
+        data,
+        allowDrillToNode: true,
+        cursor:           'pointer',
+        colorByPoint:     true,
+        dataLabels:       {
+          format: '{point.name}',
+          rotationMode: 'circular'
+        }
+      }],
+      tooltip: {
+        headerFormat: '',
+        pointFormat:  '<b>{point.name}</b>: {point.value}'
+      }
+    });
+
+    // **DEBUG**: count how many slice paths actually got drawn
+    const sliceCount = document
+      .querySelectorAll('#container .highcharts-series-group path')
+      .length;
+    console.log('🎯 Slices drawn:', sliceCount);
+  })();
+  </script>
+
+</body>
+</html>
